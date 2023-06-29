@@ -10,20 +10,16 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
-	"github.com/VictoriaMetrics/VictoriaMetrics/lib/fs"
-	// "github.com/VictoriaMetrics/metricsql"
-
-	// "io"
-	// "log"
-	// "net"
-	// "net/http"
 	"gopkg.in/yaml.v2"
 
-	// "reflect"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/fs"
+	// "github.com/VictoriaMetrics/metricsql"
 
 	testutil "github.com/VictoriaMetrics/VictoriaMetrics/app/victoria-metrics/test"
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vmalert/datasource"
@@ -197,13 +193,11 @@ func RulesUnitTest(files ...string) int {
 			fmt.Fprintln(os.Stderr, "  FAILED:")
 			for _, e := range errs {
 				fmt.Fprintln(os.Stderr, e.Error())
-				fmt.Println()
 			}
 			failed = true
 		} else {
 			fmt.Println("  SUCCESS")
 		}
-		fmt.Println()
 	}
 	if failed {
 		return 1
@@ -270,7 +264,6 @@ func ruleUnitTest(filename string) []error {
 	// Testing.
 	var errs []error
 	for _, t := range unitTestInp.Tests {
-		fmt.Println(t, evalInterval)
 		ers := t.test(evalInterval, groupOrderMap, unitTestInp.RuleFiles...)
 		if ers != nil {
 			errs = append(errs, []error{ers}...)
@@ -398,8 +391,6 @@ func (tg *testGroup) test(evalInterval time.Duration, groupOrderMap map[string]i
 		return err
 	}
 
-	// time.Sleep(300 * time.Second)
-
 	mint := time.Unix(0, 0).UTC()
 	maxt := mint.Add(tg.maxEvalTime())
 
@@ -419,7 +410,6 @@ func (tg *testGroup) test(evalInterval time.Duration, groupOrderMap map[string]i
 		logger.Infof("replay got %d results", num)
 	}
 	vmstorage.Storage.DebugFlush()
-	time.Sleep(100 * time.Second)
 
 	queries := q.BuildWithParams(datasource.QuerierParams{DataSourceType: "prometheus", Debug: true})
 	for _, ar := range tg.AlertRuleTests {
@@ -434,8 +424,19 @@ func (tg *testGroup) test(evalInterval time.Duration, groupOrderMap map[string]i
 		}
 	}
 
-	// sleep here using vmui check data
-	// time.Sleep(300 * time.Second)
+	logger.Infof("will sleep here %s", "wang")
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
+	// wait here so we can using vmui
+	for {
+		select {
+		case s := <-sigs:
+			logger.Infof("program will exit now cause receiving signal %s", s)
+			os.Exit(1)
+		default:
+		}
+	}
 
 	// todo check result
 	// todo check promql_expr
