@@ -1,15 +1,14 @@
 ---
 sort: 2
 weight: 2
-title: Cluster version
 menu:
   docs:
-    parent: "victoriametrics"
+    parent: 'victoriametrics'
     weight: 2
+title: Cluster version
 aliases:
   - /Cluster-VictoriaMetrics.html
 ---
-
 # Cluster version
 
 <img alt="VictoriaMetrics" src="logo.png" width="300">
@@ -1159,7 +1158,7 @@ Below is the output for `/path/to/vmselect -help`:
   -search.maxGraphiteTagKeys int
      The maximum number of tag keys returned from Graphite /tags, /tags/autoComplete/*, /tags/findSeries API (default 100000)
   -search.maxGraphiteTagValues int
-     The maximum number of tag values returned Graphite /tags/<tag_name> API (default 100000)   
+     The maximum number of tag values returned Graphite /tags/<tag_name> API (default 100000)
   -search.maxLookback duration
      Synonym to -search.lookback-delta from Prometheus. The value is dynamically detected from interval between time series datapoints if not set. It can be overridden on per-query basis via max_lookback arg. See also '-search.maxStalenessInterval' flag, which has the same meaining due to historical reasons
   -search.maxMemoryPerQuery size
@@ -1364,7 +1363,7 @@ Below is the output for `/path/to/vmstorage -help`:
      Supports an array of values separated by comma or specified via multiple flags.
   -retentionPeriod value
      Data with timestamps outside the retentionPeriod is automatically deleted. See also -retentionFilter
-     The following optional suffixes are supported: h (hour), d (day), w (week), y (year). If suffix isn't set, then the duration is counted in months (default 1). The minimum retentionPeriod is 24h or 1d.
+     The following optional suffixes are supported: h (hour), d (day), w (week), y (year). The minimum retention period is 24h or 1d. If suffix isn't set, then the duration is counted in months (default 1)
   -retentionTimezoneOffset duration
      The offset for performing indexdb rotation. If set to 0, then the indexdb rotation is performed at 4am UTC time per each -retentionPeriod. If set to 2h, then the indexdb rotation is performed at 4am EET time (the timezone with +2h offset)
   -rpc.disableCompression
