@@ -9,10 +9,8 @@ import (
 	"time"
 )
 
-var (
-	disablePathAppend = flag.Bool("remoteRead.disablePathAppend", false, "Whether to disable automatic appending of '/api/v1/query' path "+
-		"to the configured -datasource.url and -remoteRead.url")
-)
+var disablePathAppend = flag.Bool("remoteRead.disablePathAppend", false, "Whether to disable automatic appending of '/api/v1/query' path "+
+	"to the configured -datasource.url and -remoteRead.url")
 
 type promResponse struct {
 	Status    string `json:"status"`
@@ -165,7 +163,7 @@ func (s *VMStorage) setPrometheusInstantReqParams(r *http.Request, query string,
 		// see https://github.com/VictoriaMetrics/VictoriaMetrics/issues/1232
 		timestamp = timestamp.Truncate(s.evaluationInterval)
 	}
-	q.Set("time", fmt.Sprintf("%d", timestamp.Unix()))
+	q.Set("time", fmt.Sprintf("%s", timestamp.Format(time.RFC3339)))
 	if s.evaluationInterval > 0 { // set step as evaluationInterval by default
 		// always convert to seconds to keep compatibility with older
 		// Prometheus versions. See https://github.com/VictoriaMetrics/VictoriaMetrics/issues/1943
