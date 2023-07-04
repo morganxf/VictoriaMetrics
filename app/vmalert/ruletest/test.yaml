@@ -6,9 +6,9 @@ tests:
     # Series data.
     input_series:
       - series: "up{job='prometheus', instance='localhost:9090'}"
-        values: "1+0x400000"
+        values: "1+1x400"
       - series: 'up{job="node_exporter", instance="localhost:9100"}'
-        values: "1+0x1670 0 0 0 0 0 0 0 0" # 1 1 1 1 1 1 1 ... 0 0 0 0 0 0 0 0
+        values: "1+0x16 0 0 0 0 0 0 0 0" # 1 1 1 1 1 1 1 ... 0 0 0 0 0 0 0 0
       - series: 'go_goroutines{job="prometheus", instance="localhost:9090"}'
         values: "10+10x2 30+20x5" # 10 20 30 30 50 70 90 110 130
       - series: 'go_goroutines{job="node_exporter", instance="localhost:9100"}'

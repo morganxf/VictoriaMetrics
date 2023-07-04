@@ -12,6 +12,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -35,6 +39,7 @@ import (
 	"github.com/VictoriaMetrics/VictoriaMetrics/app/vmalert/notifier"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/httpserver"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/logger"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/prompbmarshal"
 
 	// "github.com/VictoriaMetrics/metricsql"
 
@@ -266,7 +271,7 @@ func ruleUnitTest(filename string) []error {
 	for _, t := range unitTestInp.Tests {
 		ers := t.test(evalInterval, groupOrderMap, unitTestInp.RuleFiles...)
 		if ers != nil {
-			errs = append(errs, []error{ers}...)
+			errs = append(errs, ers...)
 		}
 	}
 
@@ -346,7 +351,7 @@ func httpWrite(address string, r io.Reader) {
 	resp.Body.Close()
 }
 
-func (tg *testGroup) test(evalInterval time.Duration, groupOrderMap map[string]int, ruleFiles ...string) error {
+func (tg *testGroup) test(evalInterval time.Duration, groupOrderMap map[string]int, ruleFiles ...string) []error {
 	// todo defer cleanup data
 	r := testutil.WriteRequest{}
 	for _, data := range tg.InputSeries {
@@ -386,42 +391,34 @@ func (tg *testGroup) test(evalInterval time.Duration, groupOrderMap map[string]i
 	// flush replay result
 	vmstorage.Storage.DebugFlush()
 
-	groups, err := vmalertconfig.Parse(ruleFiles, notifier.ValidateTemplates, true)
+	testGroups, err := vmalertconfig.Parse(ruleFiles, notifier.ValidateTemplates, true)
 	if err != nil {
-		return err
+		return []error{err}
 	}
 
-	mint := time.Unix(0, 0).UTC()
+	var alertEvalTimes []prommodel.Duration
+	alertResultMap := map[prommodel.Duration]map[string][]alert{}
+	for _, at := range tg.AlertRuleTests {
+		alertEvalTimes = append(alertEvalTimes, prommodel.Duration(at.EvalTime))
+		if _, ok := alertResultMap[at.EvalTime]; !ok {
+			alertResultMap[at.EvalTime] = make(map[string][]alert)
+		}
+		alertResultMap[at.EvalTime][at.Alertname] = at.ExpAlerts
+	}
+	sort.Slice(alertEvalTimes, func(i, j int) bool {
+		return alertEvalTimes[i] < alertEvalTimes[j]
+	})
+
+	mint := time.Unix(0, 0)
 	maxt := mint.Add(tg.maxEvalTime())
 
 	q, err := datasource.Init(url.Values{"nocache": {"1"}})
 	if err != nil {
-		return err
+		return []error{err}
 	}
 	rw, err := remotewrite.Init(context.Background())
 	if err != nil {
 		logger.Fatalf("failed to init remoteWrite: %s", err)
-	}
-
-	for _, g := range groups {
-		ng := newGroup(g, q, *evaluationInterval, nil)
-		// should got alert for rule InstanceUp/InstanceLongUp
-		num := ng.replay(mint, maxt, rw)
-		logger.Infof("replay got %d results", num)
-	}
-	vmstorage.Storage.DebugFlush()
-
-	queries := q.BuildWithParams(datasource.QuerierParams{DataSourceType: "prometheus", Debug: true})
-	for _, ar := range tg.AlertRuleTests {
-		expr := "ALERTS"
-		expr = fmt.Sprintf("%s{alertname=\"%s\"}", expr, ar.Alertname)
-		result, _, err := queries.Query(context.TODO(), expr, time.Unix(int64(time.Duration(ar.EvalTime).Seconds()), 0))
-		if *result.SeriesFetched != 0 {
-			logger.Infof("we got result for alert %s", ar.Alertname)
-		}
-		if err != nil {
-			logger.Errorf("failed to query: %v", err)
-		}
 	}
 
 	logger.Infof("will sleep here %s", "wang")
@@ -438,7 +435,327 @@ func (tg *testGroup) test(evalInterval time.Duration, groupOrderMap map[string]i
 		}
 	}
 
+	var groups []*Group
+	for _, g := range testGroups {
+		ng := newGroup(g, q, *evaluationInterval, nil)
+		groups = append(groups, ng)
+		// should got alert for rule InstanceUp/InstanceLongUp
+		// todo 弃用replay，跟prom一样先用query跑通，后面测试replay的功能[replay目前跑出来的数据不对]
+
+		// num := ng.replay(mint, maxt, rw)
+		// logger.Infof("replay got %d results", num)
+	}
+	e := &executor{
+		rw: rw,
+		notifiers: func() []notifier.Notifier {
+			return []notifier.Notifier{}
+		},
+		notifierHeaders:          make(map[string]string),
+		previouslySentSeriesToRW: make(map[uint64]map[string][]prompbmarshal.Label),
+	}
+	var checkErrs []error
+	curr := 0
+	for ts := mint; ts.Before(maxt) || ts.Equal(maxt); ts = ts.Add(evalInterval) {
+		for _, g := range groups {
+			resolveDuration := getResolveDuration(g.Interval, *resendDelay, *maxResolveDuration)
+			// g.Rules.alert.Restored
+			errs := e.execConcurrently(context.Background(), g.Rules, ts, g.Concurrency, resolveDuration, g.Limit)
+			for err := range errs {
+				if err != nil {
+					checkErrs = append(checkErrs, fmt.Errorf("    group: %q, time: %s, err: %w", g.Name,
+						ts, err))
+				}
+			}
+		}
+		// getRealAlert := func(name string) *AlertingRule {
+		// 	for _, grule := range g.Rules {
+		// 		if alertrule, ok := grule.(*AlertingRule); ok {
+		// 			if alertrule.Name == name {
+		// 				return alertrule
+		// 			}
+		// 		}
+		// 	}
+		// 	return nil
+		// }
+		// 	如果时间点需要检查，检查之前flush？
+		// 检查告警的时候什么时候需要flush，每一次时间循环吗
+		// vmstorage.Storage.DebugFlush()
+
+		for curr < len(alertEvalTimes) {
+			if ts.Sub(mint) > time.Duration(alertEvalTimes[curr]) ||
+				time.Duration(alertEvalTimes[curr]) >= ts.Add(evalInterval).Sub(mint) {
+				break
+			}
+			curr++
+
+			needToCheck := map[string]labelsAndAnnotations{}
+			for _, g := range groups {
+				for _, grule := range g.Rules {
+					if alertrule, ok := grule.(*AlertingRule); ok {
+						if _, ok := alertResultMap[prommodel.Duration(ts.UnixNano())][alertrule.Name]; ok {
+							for _, got := range alertrule.alerts {
+								if got.State != notifier.StateFiring {
+									continue
+								}
+								delete(got.Labels, "alertgroup")
+								needToCheck[alertrule.Name] = append(needToCheck[alertrule.Name], labelAndAnnotation{
+									Labels:      convertToLabels(got.Labels),
+									Annotations: convertToLabels(got.Annotations),
+								})
+							}
+						}
+					}
+				}
+			}
+
+			for alertName, res := range alertResultMap[alertEvalTimes[curr]] {
+				// realAlert := getRealAlert(alertName)
+				// if len(exp) == 0 {
+				// 	if realAlert == nil {
+				// 		continue
+				// 	}
+				// 	// todo append error
+				// }
+				// notifyAlerts := realAlert.alertsToSend(ts, resolveDuration, *resendDelay)
+				// todo prometheus是要求全部匹配还是部分匹配就好了
+				gotAlerts := needToCheck[alertName]
+				var expAlerts labelsAndAnnotations
+				for _, expAlert := range res {
+					// User gives only the labels from alerting rule, which doesn't
+					// include this label (added by Prometheus during Eval).
+					if expAlert.ExpLabels == nil {
+						expAlert.ExpLabels = make(map[string]string)
+					}
+					expAlert.ExpLabels[alertNameLabel] = alertName
+					expAlerts = append(expAlerts, labelAndAnnotation{
+						Labels:      convertToLabels(expAlert.ExpLabels),
+						Annotations: convertToLabels(expAlert.ExpAnnotations),
+					})
+				}
+				sort.Sort(gotAlerts)
+				sort.Sort(expAlerts)
+				if !reflect.DeepEqual(expAlerts, gotAlerts) {
+					var testName string
+					if tg.TestGroupName != "" {
+						testName = fmt.Sprintf("    name: %s,\n", tg.TestGroupName)
+					}
+					expString := indentLines(expAlerts.String(), "            ")
+					gotString := indentLines(gotAlerts.String(), "            ")
+					checkErrs = append(checkErrs, fmt.Errorf("%s    alertname: %s, time: %s, \n        exp:%v, \n        got:%v",
+						testName, alertName, alertEvalTimes[curr].String(), expString, gotString))
+				}
+			}
+			// 在需要检查的时间戳下，检查需要检查的告警结果
+		}
+
+	}
+	// 需要吗
+	vmstorage.Storage.DebugFlush()
+
+	queries := q.BuildWithParams(datasource.QuerierParams{DataSourceType: "prometheus", Debug: true})
+Outer:
+	for _, pt := range tg.PromqlExprTests {
+		result, _, err := queries.Query(context.TODO(), pt.Expr, time.Unix(int64(time.Duration(pt.EvalTime).Seconds()), 0))
+		if err != nil {
+			// todo query error
+			checkErrs = append(checkErrs, fmt.Errorf("    expr: %q, time: %s, err: %w", pt.Expr,
+				pt.EvalTime.String(), err))
+			continue
+		}
+		var gotSamples []parsedSample
+
+		if *result.SeriesFetched == 0 {
+			if len(pt.ExpSamples) != 0 {
+				// todo failed error
+				checkErrs = append(checkErrs, fmt.Errorf("    expr: %q, time: %s, err: %w", pt.Expr,
+					pt.EvalTime.String(), err))
+			}
+			continue
+		}
+		for _, s := range result.Data {
+			gotSamples = append(gotSamples, parsedSample{
+				Labels: s.Labels,
+				Value:  s.Values[0],
+			})
+		}
+		var expSamples []parsedSample
+		for _, s := range pt.ExpSamples {
+			lb, err := promparser.ParseMetric(s.Labels)
+			if err != nil {
+				err = fmt.Errorf("labels %q: %w", s.Labels, err)
+				checkErrs = append(checkErrs, fmt.Errorf("    expr: %q, time: %s, err: %w", pt.Expr,
+					pt.EvalTime.String(), err))
+				continue Outer
+			}
+			var expLb labels
+			for _, l := range lb {
+				expLb = append(expLb, datasource.Label{
+					Name:  l.Name,
+					Value: l.Value,
+				})
+			}
+			expSamples = append(expSamples, parsedSample{
+				Labels: expLb,
+				Value:  s.Value,
+			})
+
+			sort.Slice(expSamples, func(i, j int) bool {
+				return labelCompare(expSamples[i].Labels, expSamples[j].Labels) <= 0
+			})
+			sort.Slice(gotSamples, func(i, j int) bool {
+				return labelCompare(gotSamples[i].Labels, gotSamples[j].Labels) <= 0
+			})
+			if !reflect.DeepEqual(expSamples, gotSamples) {
+				checkErrs = append(checkErrs, fmt.Errorf("    expr: %q, time: %s,\n        exp: %v\n        got: %v", pt.Expr,
+					pt.EvalTime.String(), parsedSamplesString(expSamples), parsedSamplesString(gotSamples)))
+			}
+		}
+
+	}
+
+	logger.Infof("will sleep here %s", "wang")
+
+	// wait here so we can using vmui
+	for {
+		select {
+		case s := <-sigs:
+			logger.Infof("program will exit now cause receiving signal %s", s)
+			os.Exit(1)
+		default:
+		}
+	}
+
 	// todo check result
 	// todo check promql_expr
-	return nil
+	return checkErrs
+}
+
+func parsedSamplesString(pss []parsedSample) string {
+	if len(pss) == 0 {
+		return "nil"
+	}
+	s := pss[0].String()
+	for _, ps := range pss[1:] {
+		s += ", " + ps.String()
+	}
+	return s
+}
+
+// parsedSample is a sample with parsed Labels.
+type parsedSample struct {
+	Labels labels
+	Value  float64
+}
+
+func (ps *parsedSample) String() string {
+	return ps.Labels.String() + " " + strconv.FormatFloat(ps.Value, 'E', -1, 64)
+}
+
+// indentLines prefixes each line in the supplied string with the given "indent"
+// string.
+func indentLines(lines, indent string) string {
+	sb := strings.Builder{}
+	n := strings.Split(lines, "\n")
+	for i, l := range n {
+		if i > 0 {
+			sb.WriteString(indent)
+		}
+		sb.WriteString(l)
+		if i != len(n)-1 {
+			sb.WriteRune('\n')
+		}
+	}
+	return sb.String()
+}
+
+func convertToLabels(m map[string]string) (labelset labels) {
+	for k, v := range m {
+		labelset = append(labelset, datasource.Label{
+			Name:  k,
+			Value: v,
+		})
+	}
+	return
+}
+
+type labels []datasource.Label
+
+func (ls labels) Len() int           { return len(ls) }
+func (ls labels) Swap(i, j int)      { ls[i], ls[j] = ls[j], ls[i] }
+func (ls labels) Less(i, j int) bool { return ls[i].Name < ls[j].Name }
+
+func (ls labels) String() string {
+	var b bytes.Buffer
+
+	b.WriteByte('{')
+	for i, l := range ls {
+		if i > 0 {
+			b.WriteByte(',')
+			b.WriteByte(' ')
+		}
+		b.WriteString(l.Name)
+		b.WriteByte('=')
+		b.WriteString(strconv.Quote(l.Value))
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
+type labelAndAnnotation struct {
+	Labels      labels
+	Annotations labels
+}
+
+func (la *labelAndAnnotation) String() string {
+	return "Labels:" + la.Labels.String() + "\nAnnotations:" + la.Annotations.String()
+}
+
+type labelsAndAnnotations []labelAndAnnotation
+
+func (la labelsAndAnnotations) Len() int { return len(la) }
+
+func (la labelsAndAnnotations) Swap(i, j int) { la[i], la[j] = la[j], la[i] }
+func (la labelsAndAnnotations) Less(i, j int) bool {
+	diff := labelCompare(la[i].Labels, la[j].Labels)
+	if diff != 0 {
+		return diff < 0
+	}
+	return labelCompare(la[i].Annotations, la[j].Annotations) < 0
+}
+
+func labelCompare(a, b labels) int {
+	l := len(a)
+	if len(b) < l {
+		l = len(b)
+	}
+
+	for i := 0; i < l; i++ {
+		if a[i].Name != b[i].Name {
+			if a[i].Name < b[i].Name {
+				return -1
+			}
+			return 1
+		}
+		if a[i].Value != b[i].Value {
+			if a[i].Value < b[i].Value {
+				return -1
+			}
+			return 1
+		}
+	}
+	// If all labels so far were in common, the set with fewer labels comes first.
+	return len(a) - len(b)
+}
+
+func (la labelsAndAnnotations) String() string {
+	if len(la) == 0 {
+		return "[]"
+	}
+	s := "[\n0:" + indentLines("\n"+la[0].String(), "  ")
+	for i, l := range la[1:] {
+		s += ",\n" + fmt.Sprintf("%d", i+1) + ":" + indentLines("\n"+l.String(), "  ")
+	}
+	s += "\n]"
+
+	return s
 }
