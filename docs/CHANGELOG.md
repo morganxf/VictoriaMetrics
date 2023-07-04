@@ -47,6 +47,7 @@ The following tip changes can be tested by building VictoriaMetrics components f
 * BUGFIX: [vmui](https://docs.victoriametrics.com/#vmui): fix application routing issues and problems with manual URL changes. See [this pull request](https://github.com/VictoriaMetrics/VictoriaMetrics/pull/4408).
 * BUGFIX: add validation for invalid [partial RFC3339 timestamp formats](https://docs.victoriametrics.com/Single-server-VictoriaMetrics.html#timestamp-formats) in query and export APIs.
 * BUGFIX: [vmctl](https://docs.victoriametrics.com/vmctl.html): interrupt explore procedure in influx mode if vmctl found no numeric fields.
+* BUGFIX: vmselect: fix result in Prometheus querying API if time arg is less than two times of step(default 5m).
 
 ## [v1.91.3](https://github.com/VictoriaMetrics/VictoriaMetrics/releases/tag/v1.91.3)
 
