@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/VictoriaMetrics/VictoriaMetrics/app/vmalert/config"
 	"io"
 	"net/http"
 	"path"
@@ -228,6 +229,10 @@ func (c *Client) send(ctx context.Context, data []byte) error {
 	req, err := http.NewRequest(http.MethodPost, c.addr, r)
 	if err != nil {
 		return fmt.Errorf("failed to create new HTTP request: %w", err)
+	}
+	tenant, ok := ctx.Value(config.TenantKey).(string)
+	if ok {
+		req.URL.Path = strings.Replace(req.URL.Path, "/0/", "/"+tenant+"/", 1)
 	}
 
 	// RFC standard compliant headers

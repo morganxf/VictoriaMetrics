@@ -234,6 +234,10 @@ func (ar *AlertingRule) toLabels(m datasource.Metric, qFn templates.QueryFn) (*l
 // to get time series for backfilling.
 // It returns ALERT and ALERT_FOR_STATE time series as result.
 func (ar *AlertingRule) ExecRange(ctx context.Context, start, end time.Time) ([]prompbmarshal.TimeSeries, error) {
+	tenant, ok := ar.Annotations[config.TenantKey]
+	if ok {
+		ctx = context.WithValue(ctx, config.TenantKey, tenant)
+	}
 	series, err := ar.q.QueryRange(ctx, ar.Expr, start, end)
 	if err != nil {
 		return nil, err
@@ -281,6 +285,10 @@ const resolvedRetention = 15 * time.Minute
 // Exec executes AlertingRule expression via the given Querier.
 // Based on the Querier results AlertingRule maintains notifier.Alerts
 func (ar *AlertingRule) Exec(ctx context.Context, ts time.Time, limit int) ([]prompbmarshal.TimeSeries, error) {
+	tenant, ok := ar.Annotations[config.TenantKey]
+	if ok {
+		ctx = context.WithValue(ctx, config.TenantKey, tenant)
+	}
 	start := time.Now()
 	qMetrics, req, err := ar.q.Query(ctx, ar.Expr, ts)
 	curState := ruleStateEntry{

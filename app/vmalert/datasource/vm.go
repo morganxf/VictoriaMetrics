@@ -3,6 +3,7 @@ package datasource
 import (
 	"context"
 	"fmt"
+	"github.com/VictoriaMetrics/VictoriaMetrics/app/vmalert/config"
 	"io"
 	"net/http"
 	"net/url"
@@ -19,6 +20,8 @@ const (
 	datasourcePrometheus datasourceType = "prometheus"
 	datasourceGraphite   datasourceType = "graphite"
 )
+
+const AccountIdName string = "vm_account_id"
 
 func toDatasourceType(s string) datasourceType {
 	if s == string(datasourceGraphite) {
@@ -103,6 +106,10 @@ func (s *VMStorage) Query(ctx context.Context, query string, ts time.Time) ([]Me
 	if err != nil {
 		return nil, nil, err
 	}
+	tenant, ok := ctx.Value(config.TenantKey).(string)
+	if ok {
+		req.URL.Path = strings.Replace(req.URL.Path, "/0/", "/"+tenant+"/", 1)
+	}
 
 	switch s.dataSourceType {
 	case "", datasourcePrometheus:
@@ -139,6 +146,10 @@ func (s *VMStorage) QueryRange(ctx context.Context, query string, start, end tim
 	req, err := s.newRequestPOST()
 	if err != nil {
 		return nil, err
+	}
+	tenant, ok := ctx.Value(config.TenantKey).(string)
+	if ok {
+		req.URL.Path = strings.Replace(req.URL.Path, "/0/", "/"+tenant+"/", 1)
 	}
 	if start.IsZero() {
 		return nil, fmt.Errorf("start param is missing")

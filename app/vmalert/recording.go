@@ -17,12 +17,13 @@ import (
 // to evaluate configured Expression and
 // return TimeSeries as result.
 type RecordingRule struct {
-	Type    config.Type
-	RuleID  uint64
-	Name    string
-	Expr    string
-	Labels  map[string]string
-	GroupID uint64
+	Type        config.Type
+	RuleID      uint64
+	Name        string
+	Expr        string
+	Labels      map[string]string
+	Annotations map[string]string
+	GroupID     uint64
 
 	q datasource.Querier
 
@@ -51,13 +52,14 @@ func (rr *RecordingRule) ID() uint64 {
 
 func newRecordingRule(qb datasource.QuerierBuilder, group *Group, cfg config.Rule) *RecordingRule {
 	rr := &RecordingRule{
-		Type:    group.Type,
-		RuleID:  cfg.ID,
-		Name:    cfg.Record,
-		Expr:    cfg.Expr,
-		Labels:  cfg.Labels,
-		GroupID: group.ID(),
-		metrics: &recordingRuleMetrics{},
+		Type:        group.Type,
+		RuleID:      cfg.ID,
+		Name:        cfg.Record,
+		Expr:        cfg.Expr,
+		Labels:      cfg.Labels,
+		Annotations: cfg.Annotations,
+		GroupID:     group.ID(),
+		metrics:     &recordingRuleMetrics{},
 		q: qb.BuildWithParams(datasource.QuerierParams{
 			DataSourceType:     group.Type.String(),
 			EvaluationInterval: group.Interval,
@@ -99,6 +101,10 @@ func (rr *RecordingRule) Close() {
 // It doesn't update internal states of the Rule and meant to be used just
 // to get time series for backfilling.
 func (rr *RecordingRule) ExecRange(ctx context.Context, start, end time.Time) ([]prompbmarshal.TimeSeries, error) {
+	tenant, ok := rr.Annotations[config.TenantKey]
+	if ok {
+		ctx = context.WithValue(ctx, config.TenantKey, tenant)
+	}
 	series, err := rr.q.QueryRange(ctx, rr.Expr, start, end)
 	if err != nil {
 		return nil, err
@@ -119,6 +125,10 @@ func (rr *RecordingRule) ExecRange(ctx context.Context, start, end time.Time) ([
 
 // Exec executes RecordingRule expression via the given Querier.
 func (rr *RecordingRule) Exec(ctx context.Context, ts time.Time, limit int) ([]prompbmarshal.TimeSeries, error) {
+	tenant, ok := rr.Annotations[config.TenantKey]
+	if ok {
+		ctx = context.WithValue(ctx, config.TenantKey, tenant)
+	}
 	start := time.Now()
 	qMetrics, req, err := rr.q.Query(ctx, rr.Expr, ts)
 	curState := ruleStateEntry{

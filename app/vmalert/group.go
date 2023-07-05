@@ -27,6 +27,7 @@ import (
 type Group struct {
 	mu             sync.RWMutex
 	Name           string
+	Tenant         string
 	File           string
 	Rules          []Rule
 	Type           config.Type
@@ -95,6 +96,7 @@ func newGroup(cfg config.Group, qb datasource.QuerierBuilder, defaultInterval ti
 	g := &Group{
 		Type:        cfg.Type,
 		Name:        cfg.Name,
+		Tenant:      cfg.Tenant,
 		File:        cfg.File,
 		Interval:    cfg.Interval.Duration(),
 		Limit:       cfg.Limit,

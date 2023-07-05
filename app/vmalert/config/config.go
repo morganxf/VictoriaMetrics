@@ -16,12 +16,15 @@ import (
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/promutils"
 )
 
+const TenantKey = "tenant"
+
 // Group contains list of Rules grouped into
 // entity with one name and evaluation interval
 type Group struct {
 	Type        Type `yaml:"type,omitempty"`
 	File        string
 	Name        string              `yaml:"name"`
+	Tenant      string              `yaml:"tenant,omitempty"`
 	Interval    *promutils.Duration `yaml:"interval,omitempty"`
 	Limit       int                 `yaml:"limit,omitempty"`
 	Rules       []Rule              `yaml:"rules"`
@@ -253,6 +256,14 @@ func parse(files map[string][]byte, validateTplFn ValidateTplFn, validateExpress
 			}
 			uniqueGroups[g.Name] = struct{}{}
 			g.File = file
+			if g.Tenant != "" {
+				for _, r := range g.Rules {
+					if r.Annotations == nil {
+						r.Annotations = map[string]string{}
+					}
+					r.Annotations[TenantKey] = g.Tenant
+				}
+			}
 			groups = append(groups, g)
 		}
 	}
