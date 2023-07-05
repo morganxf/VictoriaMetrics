@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -74,6 +75,7 @@ var (
 		"See https://docs.victoriametrics.com/stream-aggregation.html")
 	streamAggrDedupInterval = flagutil.NewArrayDuration("remoteWrite.streamAggr.dedupInterval", "Input samples are de-duplicated with this interval before being aggregated. "+
 		"Only the last sample per each time series per each interval is aggregated if the interval is greater than zero")
+	tenantName = flag.String("tenantName", "", "The name of the isolated tenant to which the metrics is written")
 )
 
 var (
@@ -121,6 +123,13 @@ func Init() {
 	}
 	if len(*remoteWriteURLs) > 0 && len(*remoteWriteMultitenantURLs) > 0 {
 		logger.Fatalf("cannot set both `-remoteWrite.url` and `-remoteWrite.multitenantURL` command-line flags")
+	}
+	if len(*tenantName) > 0 && len(*remoteWriteURLs) == 1 {
+		var h int32 = 0
+		for _, r := range *tenantName {
+			h = 31*h + r
+		}
+		(*remoteWriteURLs)[0] = strings.Replace((*remoteWriteURLs)[0], "/0/", "/"+strconv.Itoa(int(h))+"/", 1)
 	}
 	if *maxHourlySeries > 0 {
 		hourlySeriesLimiter = bloomfilter.NewLimiter(*maxHourlySeries, time.Hour)
