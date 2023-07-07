@@ -1,6 +1,8 @@
 package remotewrite
 
 import (
+	"crypto/md5"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"net/url"
@@ -125,11 +127,8 @@ func Init() {
 		logger.Fatalf("cannot set both `-remoteWrite.url` and `-remoteWrite.multitenantURL` command-line flags")
 	}
 	if len(*tenantName) > 0 && len(*remoteWriteURLs) == 1 {
-		var h int32 = 0
-		for _, r := range *tenantName {
-			h = 31*h + r
-		}
-		(*remoteWriteURLs)[0] = strings.Replace((*remoteWriteURLs)[0], "/0/", "/"+strconv.Itoa(int(h))+"/", 1)
+		id := hashTenant(*tenantName)
+		(*remoteWriteURLs)[0] = strings.Replace((*remoteWriteURLs)[0], "/0/", "/"+id+"/", 1)
 	}
 	if *maxHourlySeries > 0 {
 		hourlySeriesLimiter = bloomfilter.NewLimiter(*maxHourlySeries, time.Hour)
@@ -718,4 +717,17 @@ func CheckStreamAggrConfigs() error {
 		sas.MustStop()
 	}
 	return nil
+}
+
+func hashTenant(tenantName string) string {
+	hash := md5.Sum([]byte(tenantName))
+	high := hash[:8]
+	low := hash[8:]
+	result := make([]byte, len(high))
+	for i := range high {
+		result[i] = high[i] ^ low[i]
+	}
+	highInt := binary.BigEndian.Uint32(result[:4])
+	lowInt := binary.BigEndian.Uint32(result[4:])
+	return fmt.Sprintf("%d:%d", highInt, lowInt)
 }
