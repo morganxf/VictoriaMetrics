@@ -181,3 +181,11 @@ docker-cluster-up:
 
 docker-cluster-down:
 	docker-compose -f deployment/docker/docker-compose-cluster.yml down -v
+
+morgan-docker-build:
+	docker build -t $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-$(GOARCH) \
+		--build-arg TARGETARCH=$(GOARCH) \
+		-f app/$(APP_NAME)/deployment/Dockerfile-morgan bin
+	docker push $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-$(GOARCH)
+	docker tag $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-$(GOARCH) $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)
+	docker push $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)

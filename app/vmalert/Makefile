@@ -137,3 +137,6 @@ vmalert-windows-amd64:
 
 vmalert-pure:
 	APP_NAME=vmalert $(MAKE) app-local-pure
+
+morgan-vmalert: vmalert-linux-amd64-prod
+	GOARCH=amd64 APP_NAME=vmalert $(MAKE) morgan-docker-build

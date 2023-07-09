@@ -108,3 +108,6 @@ vmagent-windows-amd64:
 
 vmagent-pure:
 	APP_NAME=vmagent $(MAKE) app-local-pure
+
+morgan-vmagent: vmagent-linux-amd64-prod
+	GOARCH=amd64 APP_NAME=vmagent $(MAKE) morgan-docker-build

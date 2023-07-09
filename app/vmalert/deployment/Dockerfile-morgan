@@ -1,0 +1,6 @@
+# amd64
+FROM victoriametrics/vmalert:v1.90.0@sha256:d7457e148f3ff70057ed356ce9925a2c25904dd6d0305bca236f426eaf190223
+
+ARG TARGETARCH
+
+COPY ./vmalert-linux-${TARGETARCH}-prod /vmalert-prod
