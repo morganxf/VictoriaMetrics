@@ -4,6 +4,7 @@
 package prompbmarshal
 
 import (
+	"context"
 	encoding_binary "encoding/binary"
 	math "math"
 	math_bits "math/bits"
@@ -16,8 +17,9 @@ type Sample struct {
 
 // TimeSeries represents samples and labels for a single time series.
 type TimeSeries struct {
-	Labels  []Label  `protobuf:"bytes,1,rep,name=labels,proto3" json:"labels"`
-	Samples []Sample `protobuf:"bytes,2,rep,name=samples,proto3" json:"samples"`
+	Context context.Context `protobuf:"-" json:"-"`
+	Labels  []Label         `protobuf:"bytes,1,rep,name=labels,proto3" json:"labels"`
+	Samples []Sample        `protobuf:"bytes,2,rep,name=samples,proto3" json:"samples"`
 }
 
 type Label struct {

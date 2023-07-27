@@ -458,7 +458,8 @@ var (
 func (e *executor) exec(ctx context.Context, rule Rule, ts time.Time, resolveDuration time.Duration, limit int) error {
 	execTotal.Inc()
 
-	tss, err := rule.Exec(ctx, ts, limit)
+	ctxNew := context.WithValue(ctx, config.TenantKey, rule.Tenant())
+	tss, err := rule.Exec(ctxNew, ts, limit)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			// the context can be cancelled on graceful shutdown
@@ -470,10 +471,11 @@ func (e *executor) exec(ctx context.Context, rule Rule, ts time.Time, resolveDur
 	}
 
 	if e.rw != nil {
-		pushToRW := func(tss []prompbmarshal.TimeSeries) error {
+		pushToRW := func(ctx context.Context, tss []prompbmarshal.TimeSeries) error {
 			var lastErr error
 			for _, ts := range tss {
 				remoteWriteTotal.Inc()
+				ts.Context = ctx
 				if err := e.rw.Push(ts); err != nil {
 					remoteWriteErrors.Inc()
 					lastErr = fmt.Errorf("rule %q: remote write failure: %w", rule, err)
@@ -481,12 +483,12 @@ func (e *executor) exec(ctx context.Context, rule Rule, ts time.Time, resolveDur
 			}
 			return lastErr
 		}
-		if err := pushToRW(tss); err != nil {
+		if err := pushToRW(ctxNew, tss); err != nil {
 			return err
 		}
 
 		staleSeries := e.getStaleSeries(rule, tss, ts)
-		if err := pushToRW(staleSeries); err != nil {
+		if err := pushToRW(ctxNew, staleSeries); err != nil {
 			return err
 		}
 	}
@@ -506,7 +508,7 @@ func (e *executor) exec(ctx context.Context, rule Rule, ts time.Time, resolveDur
 	for _, nt := range e.notifiers() {
 		wg.Add(1)
 		go func(nt notifier.Notifier) {
-			if err := nt.Send(ctx, alerts); err != nil {
+			if err := nt.Send(ctxNew, alerts); err != nil {
 				errGr.Add(fmt.Errorf("rule %q: failed to send alerts to addr %q: %w", rule, nt.Addr(), err))
 			}
 			wg.Done()

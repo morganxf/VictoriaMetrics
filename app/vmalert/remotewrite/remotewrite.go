@@ -148,7 +148,7 @@ func (c *Client) run(ctx context.Context) {
 			wr.Timeseries = append(wr.Timeseries, ts)
 		}
 		lastCtx, cancel := context.WithTimeout(context.Background(), defaultWriteTimeout)
-		c.flush(lastCtx, wr)
+		c.flushWithTenants(lastCtx, wr)
 		cancel()
 	}
 	c.wg.Add(1)
@@ -164,14 +164,14 @@ func (c *Client) run(ctx context.Context) {
 				shutdown()
 				return
 			case <-ticker.C:
-				c.flush(ctx, wr)
+				c.flushWithTenants(ctx, wr)
 			case ts, ok := <-c.input:
 				if !ok {
 					continue
 				}
 				wr.Timeseries = append(wr.Timeseries, ts)
 				if len(wr.Timeseries) >= c.maxBatchSize {
-					c.flush(ctx, wr)
+					c.flushWithTenants(ctx, wr)
 				}
 			}
 		}
@@ -185,6 +185,33 @@ var (
 	droppedBytes        = metrics.NewCounter(`vmalert_remotewrite_dropped_bytes_total`)
 	bufferFlushDuration = metrics.NewHistogram(`vmalert_remotewrite_flush_duration_seconds`)
 )
+
+func (c *Client) flushWithTenants(ctx context.Context, wr *prompbmarshal.WriteRequest) {
+	if len(wr.Timeseries) < 1 {
+		return
+	}
+	tenantRequests := make(map[string]*prompbmarshal.WriteRequest)
+	for _, ts := range wr.Timeseries {
+		tenant, ok := ts.Context.Value(config.TenantKey).(string)
+		if !ok {
+			tenant = ""
+		}
+		if _, found := tenantRequests[tenant]; !found {
+			tenantRequests[tenant] = &prompbmarshal.WriteRequest{}
+		}
+		tenantRequests[tenant].Timeseries = append(tenantRequests[tenant].Timeseries, ts)
+	}
+	var wg sync.WaitGroup
+	wg.Add(len(tenantRequests))
+	for k, v := range tenantRequests {
+		go func(tenant string, wr *prompbmarshal.WriteRequest) {
+			defer wg.Done()
+			_ctx := context.WithValue(ctx, config.TenantKey, tenant)
+			c.flush(_ctx, wr)
+		}(k, v)
+	}
+	wg.Wait()
+}
 
 // flush is a blocking function that marshals WriteRequest and sends
 // it to remote write endpoint. Flush performs limited amount of retries
@@ -231,7 +258,7 @@ func (c *Client) send(ctx context.Context, data []byte) error {
 		return fmt.Errorf("failed to create new HTTP request: %w", err)
 	}
 	tenant, ok := ctx.Value(config.TenantKey).(string)
-	if ok {
+	if ok && len(tenant) > 0 {
 		req.URL.Path = strings.Replace(req.URL.Path, "/0/", "/"+tenant+"/", 1)
 	}
 

@@ -257,11 +257,11 @@ func parse(files map[string][]byte, validateTplFn ValidateTplFn, validateExpress
 			uniqueGroups[g.Name] = struct{}{}
 			g.File = file
 			if g.Tenant != "" {
-				for _, r := range g.Rules {
-					if r.Annotations == nil {
-						r.Annotations = map[string]string{}
+				for i, _ := range g.Rules {
+					if g.Rules[i].Annotations == nil {
+						g.Rules[i].Annotations = map[string]string{}
 					}
-					r.Annotations[TenantKey] = g.Tenant
+					g.Rules[i].Annotations[TenantKey] = g.Tenant
 				}
 			}
 			groups = append(groups, g)

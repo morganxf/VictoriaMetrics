@@ -39,6 +39,10 @@ type recordingRuleMetrics struct {
 	samples *utils.Gauge
 }
 
+func (rr *RecordingRule) Tenant() string {
+	return rr.Annotations[config.TenantKey]
+}
+
 // String implements Stringer interface
 func (rr *RecordingRule) String() string {
 	return rr.Name

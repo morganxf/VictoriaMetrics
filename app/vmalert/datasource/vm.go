@@ -107,7 +107,7 @@ func (s *VMStorage) Query(ctx context.Context, query string, ts time.Time) ([]Me
 		return nil, nil, err
 	}
 	tenant, ok := ctx.Value(config.TenantKey).(string)
-	if ok {
+	if ok && len(tenant) > 0 {
 		req.URL.Path = strings.Replace(req.URL.Path, "/0/", "/"+tenant+"/", 1)
 	}
 
@@ -148,7 +148,7 @@ func (s *VMStorage) QueryRange(ctx context.Context, query string, start, end tim
 		return nil, err
 	}
 	tenant, ok := ctx.Value(config.TenantKey).(string)
-	if ok {
+	if ok && len(tenant) > 0 {
 		req.URL.Path = strings.Replace(req.URL.Path, "/0/", "/"+tenant+"/", 1)
 	}
 	if start.IsZero() {

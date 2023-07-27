@@ -29,6 +29,7 @@ type Rule interface {
 	// Close performs the shutdown procedures for rule
 	// such as metrics unregister
 	Close()
+	Tenant() string
 }
 
 var errDuplicate = errors.New("result contains metrics with the same labelset after applying rule labels")

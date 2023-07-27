@@ -124,6 +124,10 @@ func newAlertingRule(qb datasource.QuerierBuilder, group *Group, cfg config.Rule
 	return ar
 }
 
+func (ar *AlertingRule) Tenant() string {
+	return ar.Annotations[config.TenantKey]
+}
+
 // Close unregisters rule metrics
 func (ar *AlertingRule) Close() {
 	ar.metrics.active.Unregister()
