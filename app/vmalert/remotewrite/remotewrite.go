@@ -190,6 +190,8 @@ func (c *Client) flushWithTenants(ctx context.Context, wr *prompbmarshal.WriteRe
 	if len(wr.Timeseries) < 1 {
 		return
 	}
+	defer prompbmarshal.ResetWriteRequest(wr)
+	defer bufferFlushDuration.UpdateDuration(time.Now())
 	tenantRequests := make(map[string]*prompbmarshal.WriteRequest)
 	for _, ts := range wr.Timeseries {
 		tenant, ok := ts.Context.Value(config.TenantKey).(string)
@@ -220,8 +222,8 @@ func (c *Client) flush(ctx context.Context, wr *prompbmarshal.WriteRequest) {
 	if len(wr.Timeseries) < 1 {
 		return
 	}
-	defer prompbmarshal.ResetWriteRequest(wr)
-	defer bufferFlushDuration.UpdateDuration(time.Now())
+	//defer prompbmarshal.ResetWriteRequest(wr)
+	//defer bufferFlushDuration.UpdateDuration(time.Now())
 
 	data, err := wr.Marshal()
 	if err != nil {
