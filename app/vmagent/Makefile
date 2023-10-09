@@ -74,7 +74,7 @@ run-vmagent:
 	$(MAKE) run-via-docker
 
 vmagent-linux-amd64:
-	APP_NAME=vmagent CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(MAKE) app-local-goos-goarch
+	APP_NAME=vmagent CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(MAKE) app-local-goos-goarch
 
 vmagent-linux-arm:
 	APP_NAME=vmagent CGO_ENABLED=0 GOOS=linux GOARCH=arm $(MAKE) app-local-goos-goarch
@@ -109,5 +109,6 @@ vmagent-windows-amd64:
 vmagent-pure:
 	APP_NAME=vmagent $(MAKE) app-local-pure
 
-morgan-vmagent: vmagent-linux-amd64-prod
-	GOARCH=amd64 APP_NAME=vmagent $(MAKE) morgan-docker-build
+morgan-vmagent: vmagent-linux-amd64-prod vmagent-linux-arm64-prod
+	APP_NAME=vmagent $(MAKE) morgan-docker-build
+	APP_NAME=vmagent $(MAKE) morgan-docker-manifest

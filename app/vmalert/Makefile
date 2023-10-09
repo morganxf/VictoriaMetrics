@@ -103,7 +103,7 @@ replay-vmalert: vmalert
 		-replay.timeTo=2021-05-29T18:40:43Z
 
 vmalert-linux-amd64:
-	APP_NAME=vmalert CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(MAKE) app-local-goos-goarch
+	APP_NAME=vmalert CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(MAKE) app-local-goos-goarch
 
 vmalert-linux-arm:
 	APP_NAME=vmalert CGO_ENABLED=0 GOOS=linux GOARCH=arm $(MAKE) app-local-goos-goarch
@@ -138,5 +138,6 @@ vmalert-windows-amd64:
 vmalert-pure:
 	APP_NAME=vmalert $(MAKE) app-local-pure
 
-morgan-vmalert: vmalert-linux-amd64-prod
-	GOARCH=amd64 APP_NAME=vmalert $(MAKE) morgan-docker-build
+morgan-vmalert: vmalert-linux-amd64-prod vmalert-linux-arm64-prod
+	APP_NAME=vmalert $(MAKE) morgan-docker-build
+	APP_NAME=vmalert $(MAKE) morgan-docker-manifest

@@ -1,6 +1,0 @@
-# amd64
-FROM victoriametrics/vmagent:v1.90.0@sha256:1a5a199b54d922d62508515fe7296b857085f129b740f099d6e35f3a190ea180
-
-ARG TARGETARCH
-
-COPY ./vmagent-linux-${TARGETARCH}-prod /vmagent-prod

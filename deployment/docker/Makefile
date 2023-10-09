@@ -99,14 +99,14 @@ app-via-docker-pure:
 	APP_SUFFIX='-pure' DOCKER_OPTS='--env CGO_ENABLED=0' $(MAKE) app-via-docker
 
 app-via-docker-linux-amd64:
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 $(MAKE) app-via-docker-goos-goarch
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(MAKE) app-via-docker-goos-goarch
 
 app-via-docker-linux-arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(MAKE) app-via-docker-goos-goarch
 
 app-via-docker-linux-arm64:
 	APP_SUFFIX='-linux-arm64' \
-	DOCKER_OPTS='--env CGO_ENABLED=1 --env GOOS=linux --env GOARCH=arm64 --env CC=/opt/cross-builder/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc' \
+	DOCKER_OPTS='--env CGO_ENABLED=0 --env GOOS=linux --env GOARCH=arm64 --env CC=/opt/cross-builder/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc' \
 	$(MAKE) app-via-docker
 
 app-via-docker-linux-ppc64le:
@@ -139,11 +139,11 @@ package-via-docker-goarch:
 
 package-via-docker-goarch-arm64:
 	APP_SUFFIX='-arm64' \
-	DOCKER_OPTS='--env CGO_ENABLED=1 --env GOOS=linux --env GOARCH=arm64 --env CC=/opt/cross-builder/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc' \
+	DOCKER_OPTS='--env CGO_ENABLED=0 --env GOOS=linux --env GOARCH=arm64 --env CC=/opt/cross-builder/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc' \
 	$(MAKE) package-via-docker
 
 package-via-docker-goarch-cgo:
-	CGO_ENABLED=1 $(MAKE) package-via-docker-goarch
+	CGO_ENABLED=0 $(MAKE) package-via-docker-goarch
 
 package-via-docker-goarch-nocgo:
 	CGO_ENABLED=0 $(MAKE) package-via-docker-goarch
@@ -183,9 +183,14 @@ docker-cluster-down:
 	docker-compose -f deployment/docker/docker-compose-cluster.yml down -v
 
 morgan-docker-build:
-	docker build -t $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-$(GOARCH) \
-		--build-arg TARGETARCH=$(GOARCH) \
-		-f app/$(APP_NAME)/deployment/Dockerfile-morgan bin
-	docker push $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-$(GOARCH)
-	docker tag $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-$(GOARCH) $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)
-	docker push $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)
+	docker build -t $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-amd64 -f app/$(APP_NAME)/deployment/amd/Dockerfile bin
+	docker push $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-amd64
+	docker build -t $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-arm64 -f app/$(APP_NAME)/deployment/arm/Dockerfile bin
+	docker push $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-arm64
+
+morgan-docker-manifest:
+	docker manifest create $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG) $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-amd64 $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-arm64
+	docker manifest annotate $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG) $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-amd64 --os linux --arch amd64
+	docker manifest annotate $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG) $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)-arm64 --os linux --arch arm64
+	docker manifest inspect $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)
+	docker manifest push $(DOCKER_NAMESPACE)/$(APP_NAME):$(TAG)
