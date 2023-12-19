@@ -341,6 +341,7 @@ func (sw *scrapeWork) run(stopCh <-chan struct{}, globalStopCh <-chan struct{}) 
 		case tt := <-ticker.C:
 			t := tt.UnixNano() / 1e6
 			if d := math.Abs(float64(t - timestamp)); d > 0 && d/float64(scrapeInterval.Milliseconds()) > 0.1 {
+				logger.Warnf("Too big jitter. Adjust timestamp. jitter=%.2f, scrapeTimestamp=%d, realTimestamp=%d", d, timestamp, t)
 				// Too big jitter. Adjust timestamp
 				timestamp = t
 			}
@@ -505,6 +506,8 @@ func (sw *scrapeWork) processScrapedData(scrapeTimestamp, realTimestamp int64, b
 		// Return wc to the pool if the parsed response size was smaller than -promscrape.minResponseSizeForStreamParse
 		// This should reduce memory usage when scraping targets with big responses.
 		writeRequestCtxPool.Put(wc)
+	} else {
+		logger.Infof("mustSwitchToStreamParse is true. job: %s", sw.Config.jobNameOriginal)
 	}
 	// body must be released only after wc is released, since wc refers to body.
 	if !areIdenticalSeries {
